@@ -108,3 +108,48 @@ It's also possible to split a commit into several commits, e.g. using `git reset
 There's another interesting way to split a commit AB into two commits A and B, namely by reverting B by hand, reverting the revert, and then combining the revert into the original commit. If we use notation B^-1 for the revert of B, it means that on top of AB you create commit B^-1, then revert it to create B, leaving you with three commits: AB, B^-1, and B. Then you combine AB with B^-1 to form the commit A.
 
 By alternating between the `git add -p` approach and the revert-the-revert approach, you can quickly split a large commit into tiny units of change.
+
+One common use-case for the revert-the-revert approach is to split a refactoring step from a feature-addition step.
+Suppose you have just worked on adding a new button to your app, and in the process you have refactored/tweaked some common shared functionality in the codebase.
+You are not yet ready to merge the change that adds the new button, but the refactoring of the common functionality would be good to merge early, to avoid conflicts when rebasing later.
+In that case, the revert-the-revert approach can be used to split the commit into commit A that does the refactoring and commit B that adds the button.
+To be precise, suppose you have already committed AB, that is, a combined commit of both the refactor and the addition of the button.
+Simply delete the button (and all related new code) and commit that as commit B^-1, then revert the most recent commit to form commit B.
+Squash AB and B^-1 to form commit A, which is the refactoring that you can then merge.
+
+### When revert-the-revert gets messy: Introducing the Hammer
+
+It's not easy to do a perfect revert-the-revert in one try.
+What can happen is that you try to delete all the code for the new button, commit the revert, revert the revert, and squash, but then you look at the diff of the two resulting commits A and B and see that there's still a bit of "button addition" work in commit A even though it belongs in commit B.
+
+What you have done is not create the two pristine commits A and B, but instead created something like "A B1" and "B2", where B = B1 B2, i.e., a part of B has ended up in the first commit.
+In this case it is tempting to use `git reflog` to go back in time to when you had commit "AB" (or indeed, just squash "A B1" together with B2), but that is actually not necessary.
+
+Instead, what you must do is an interactive rebase where you insert a `b` "break" command in between the "A B1" commit and the "B2" commit.
+Then the interactive rebase lets you edit the codebase on top of "A B1" before continuing with applying B2. At this point, manually revert B1 and commit to create B1^-1, and then immediately revert the revert of B1, creating the commit B1. Then continue the interactive rebase, resulting in four commits: "A B1", B1^-1, B1, and B2.
+Next, use another interactive rebase to squash the first two and the last two commits, resulting in two commits "A B1 B1^-1" = A and "B1 B2" = B.
+
+Note that the step of committing B1 and immediately reverting B1 is a no-op from the codebase's point of view, and this fact is crucial to ensure that the interactive rebase doesn't run into merge conflicts when continuing to apply B2. This is such a useful trick, and it is called The Hammer.
+
+**The Hammer**: Insert two commits A and A^-1 at an arbitrary point in a commit sequence, usually through the `b` "break" command in an interactive rebase. Then, squash A and A^-1 into different commits in the commit sequence, using the `f` and `f -C` commands in an interactive rebase.
+
+Note that it is pointless to write a detailed commit message for commit A, since A and A^-1 are anyway going to be squashed into other commits just moments after being committed. For this reason it can be useful to have a shell alias ready to commit the change and immediately revert it: `git commit -am HAMMER && git revert --no-edit @`.
+
+The Hammer can be used to iteratively clean up a revert-the-revert that has gone messy, but it should be thought of as a general tool for moving changes from one commit into another.
+
+### Using the Hammer to swap two conflicting commits
+
+Sometimes while preparing a code change, it becomes evident that some refactoring is appropriate to do, usually in a way that requires modifying both the existing codebase and the newly changed code in the current branch.
+
+This can result in the unwanted swapped sequence of commits B A, where B is the feature addition and A is the refactoring.
+
+If it is not possible to merge B immediately, then it is a good idea to merge A early, to avoid conflicts when rebasing the branch later.
+
+The traditional approach is to start a new branch where you implement the refactoring A without the feature B, merge it, and then rebase your feature branch; however, this inevitably causes conflicts.
+
+Instead, use the Hammer to swap A and B without dealing with conflicts. There are two cases, depending on which change is lightest (in terms of effort required to apply manually):
+
+* A: Use the Hammer to insert A A^-1 before B A, then squash A^-1 B A to obtain just B, resulting in A B.
+* B^-1: Use the Hammer to insert B^-1 B after B A, then squash B A B^-1 to obtain just A, resulting in A B.
+
+Note that this is really just a retelling of the "splitting a commit" story from earlier, since if you squash B A together, then you obtain a commit AB that you can untangle (using revert-the-revert) to obtain A B.
