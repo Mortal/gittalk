@@ -55,12 +55,15 @@ In this case, the two modifications could easily be done by one developer in any
 Faced with two sets of changes, A and B, that conflict syntactically,
 we can now formulate how to resolve the conflict peacefully, without having to deal with git's default approach of asking the developer to pick the correct sets of lines from the two versions.
 Instead of asking git to apply the patch for B on top of the codebase with A, the developer has to print out the patch for B, paraphrase it in their head, and apply the paraphrased patch to the codebase by hand.
-With only minimal paraphrasing, this is a mechanical task that uses the developers reading and writing skills without requiring a lot of mental work; if minimal paraphrasing of the patch is not enough, then the developer needs to think about the patch in more abstract terms, which in turn adds more mental strain when actually applying the patch.
+With only minimal paraphrasing, this is a mechanical task that uses the developer's reading and writing skills without requiring a lot of mental work; if minimal paraphrasing of the patch is not enough, then the developer needs to think about the patch in more abstract terms, which in turn adds more mental strain when actually applying the patch.
 
-While it may sound tedious to apply the patch for B by hand in this way, it is useful to think about the skillset that it leverages, compared to the default merge conflict resolution approach of picking which set of lines from two versions of a file to go into the final merged file.
-The point is that developers are training their reading and writing skills as part of doing programming work, whereas solving merge conflicts is only a tiny fraction of programming and thus not a skill that developers are specifically training in their day-to-day work, so why present arcane novel merge challenges, when the developer can just do some light reading and writing instead?
+While it may sound tedious to apply the patch for B by hand in this way, it is useful to think about the skillset that it leverages to handle conflicts in this way, compared to the skillset required in the default merge conflict resolution approach of picking which set of lines from two versions of a file to go into the final merged file.
+Applying a patch by hand leverages the reading and writing skills that developers are anyway training and practicing as part of doing programming work, whereas solving merge conflicts by picking lines of code from two different versions of a file is something that the developer hopefully only spends a tiny fraction of time on, and thus is not a skill that is honed.
+With this in mind, it is hopefully clear that a developer should prefer to do the easy mechanical task over solving the arcane merge conflict riddle.
 
-In school, we are taught how to show our work in deriving solutions to mathematical questions, and while this can seem tedious, it can in fact be helpful to go through a number of steps in working towards the final answer, and this applies not only to high school mathematics, but to all sorts of tasks. In this view, merge conflict resolution by picking lines from two versions is showing the final answer without showing any work, whereas merging conflicts by re-applying B by hand can be thought of as deriving the final answer by showing the intermediary steps.
+In school, we are taught that we must show our work when deriving solutions to mathematical questions, and while this can seem tedious to many high school students, it is actually helping develop reasoning skills that are necessary to work towards the final answer to more involved abstract problems.
+These reasoning skills are applicable not only to high school mathematics, but to all sorts of tasks.
+Merge conflict resolution by picking lines from two versions is akin to trying to write down the final answer without doing the intermediate reasoning, whereas resolving conflicts by re-applying B by hand can be thought of as deriving the final answer by doing the intermediate reasoning steps.
 
 ## When re-applying the patch is just too tedious
 
@@ -69,28 +72,33 @@ Suppose another developer has already merged the change A that conflicts with yo
 In this case, it would have been much less work to first merge B, and then redo A on top of B, since the A change is much less work to apply by hand.
 
 Luckily, this is possible, since we know that the patch for B can be applied to the codebase where A is not applied:
+
 Simply revert A, then apply the patch for B, then re-apply A by hand.
+
 If we use A^-1 to refer to the revert of A, then the branch now contains commits that apply three sets of changes in sequence:
 First A^-1, then B, and finally A.
-Note that only the third commit, which applies the `A` change, has to be applied by hand, as the other two commits result from the `git revert` and `git rebase` commands.
-By squashing the three commits together, we obtain a single commit which implements the `B` change, and which applies cleanly as a patch on top of the codebase with `A` already merged.
+In this approach, we still had to reapply a patch by hand, but we chose to reapply A by hand instead of reapplying B by hand.
+The other two commits, A^-1 and B, arise from `git revert` and `git rebase` respectively, so the only work by hand was in reapplying A.
 
-We still had to reapply a patch by hand, but we chose to reapply A by hand instead of reapplying B by hand.
+By squashing the three commits together, we obtain a single commit which implements the `B` change, and which applies cleanly as a patch on top of the codebase with `A` already merged.
 
 
 ## Why git?
 
 git is a complicated tool; it is difficult to learn and difficult to master.
 Nevertheless, it is very widespread in the software development world as the main version control system across open-source and proprietary ecosystems.
+
 The git command-line interface has a lot of subcommands whose names can be difficult to make sense of,
 and there are several cases of one subcommand name being able to do lots of seemingly unrelated operations.
 
 There are also GUIs, either standalone or built into editors and IDEs, that seek to replace all day-to-day use of the standard command-line interface.
 
-The goal of this article is to give the reader a new system of thinking about patches and codebase changes, and the formulations lead to techniques that align nicely with certain basic functionalities in git that are not as smooth or first-class in other version control systems.
+The goal of this article is to give the reader a new system of thinking about patches and codebase changes,
+and the formulations are indirectly tailored to git in a way that leads to techniques that align nicely with certain basic functionalities in git.
 
 This article is NOT intended to be a git tutorial, and there is no guarantee that you can take the insights from the article and apply it directly in your day-to-day life, but the hope is that the insights can help you a bit the next time you are faced with merge conflicts and codebase branch reorganizations.
-There are lots of useful git tutorials online, for example you can read up on the following:
+
+There are lots of useful git tutorials online. To highlight a few:
 
 * https://git-scm.com/book/en/v2
 * https://github.com/robparrott/version-control-workshop/blob/master/docs/git.md#git-the-index
