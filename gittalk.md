@@ -1,30 +1,103 @@
-# Git talk
+# Peaceful conflict resolution in version control systems
+
+When collaborating on a codebase where several people are working in parallel on different development branches,
+it often happens that different developers try to edit the same piece of code, which leads to problems when both branches have to be merged into the main codebase.
+
+If git is used to collaborate on the codebase, the first developer to merge the branch has an easy day, and the other developer is met with a **merge conflict**,
+which is the technical term used when git was unable to automatically integrate the two sets of changes together.
+
+In this article, we present a way of thinking about codebase changes that lets us handle merge conflicts in a novel way that is much less of a hair-pulling frustrating experience.
+By using this new way of thinking, we then develop a new mechanical way to work with branches that makes it easy to split off "refactoring work" from "feature work", such that refactors can be merged early, thus reducing the incidence of merge conflicts.
+
+## The classic approach to merge conflicts
+
+When a merge conflict happens, the developer needs to resolve the merge conflict, and unfortunately, the default approach used by git is to show a line-by-line matching of the two versions of the file, sometimes with the "base" file thrown into the mix, and asking the developer to pick which lines from each version should go into the "merged" file.
+If the developer already knows what the final merged file looks like, then this task is easy, but often it is the case that the developer is not equipped to start picking lines from the two files right away;
+more context is usually required to construct the final version of the file where both sets of changes have been applied.
+
+Let's expand a bit on why git "gives up" and presents a merge conflict to the developer. Suppose you have two sets of changes, A and B, that need to be applied together to a codebase. First, A is applied to the codebase. Then an attempt is made to apply B to the codebase. If B can be applied on top of A, then all is good; if B cannot be applied, it is called a **conflict**.
+
+The way we normally formulate "sets of changes" when interfacing with an automated system like git is using *patches*.
+Patches contain line-oriented edit instructions of the form "change line 177 from `resource->version = version;` to `resource->version_ident = version;`".
+The patch also contains a few context lines before and after the change, to help locate the correct place to make the line edit in case the line in question is not exactly on line 177 anymore.
+In the previous example, A and B are treated by git as patches, and when git tries to apply patch B to the codebase where A has already been applied,
+if a line cannot be found (or doesn't match exactly what it says in the patch it's supposed to say), git gives up and presents the "merge conflict" riddle to the developer.
+
+## What's in a patch?
+
+While patches are useful to communicate an exact codebase change in a way that a system can apply with as little uncertainty as possible, patches are much more literal than the way developers would normally communicate specific codebase changes to each other.
+
+If a developer reads a patch, and is tasked with communicating to another developer what the patch does in a way that the other developer could apply the same change, the explanation will typically go something like "go to function `doFoo()` and add a new parameter `bool force`, and skip the permission check if `force` is true; go through the codebase and add `false` as an argument wherever `doFoo()` is called".
+
+Such an explanation can then be interpreted by the other developer and applied more or less directly, and if the other developer in question is familiar with the codebase they are working on, then this process is quick and straightforward.
+
+One key insight from this is that even though the patch formulation of A may cause the patch formulation of B to not apply cleanly when git works on the literal codebase, it might be that B can be applied cleanly to the codebase if a developer paraphrases the patch and applies this paraphrased patch to the codebase by hand.
+
+What we have really done is taken one step towards turning the patch into a more abstract description of a codebase change.
+It might be the case that even this paraphrasing of the patch is not enough to be applied cleanly, e.g. if the function to be edited no longer exists in the codebase.
+In that case, we might need to make an even more abstract description of the change to be made to the codebase, such as "add a way to run the `foo` functionality without the permission check that we normally do".
+One developer might take this description and add a "force" parameter, but maybe after the first patch A has been applied, this no longer makes sense, and instead we need to refactor some existing function, extracting a new function that does the operation without the check.
+
+### Thinking about conflicting changes
+
+Two modifications to a codebase can conflict semantically, or just syntactically.
+
+A semantic conflict is when two developers are trying to take the codebase in different directions, e.g. Alice wants to change the app's "save" button to be green, and Bob wants to change it to be red.
+In this case, only one of the two changes can "survive", and the other change's commit must be dropped (on a feature branch) or reverted (if already merged).
+It is not necessarily obvious how to resolve the conflict, as it might require involving a product owner or other arbitrator to decide on which change should "win".
+When such semantic conflicts happen, it is usually a sign of some missed coordination, since two developers invested effort on something that only one developer should have been working on.
+
+A syntactic conflict is when two developers are changing the codebase in different ways but at the same place in the code, e.g. Alice wants to rename a variable, and Bob wants to extract a couple of lines of code into a new function.
+In this case, the two modifications could easily be done by one developer in any order, but the fact that the two changes happened in parallel means that the computer cannot merge the changes together automatically, and instead the developer needs to be involved in merging the changes.
+
+## Resolving conflicts peacefully
+
+Faced with two sets of changes, A and B, that conflict syntactically,
+we can now formulate how to resolve the conflict peacefully, without having to deal with git's default approach of asking the developer to pick the correct sets of lines from the two versions.
+Instead of asking git to apply the patch for B on top of the codebase with A, the developer has to print out the patch for B, paraphrase it in their head, and apply the paraphrased patch to the codebase by hand.
+With only minimal paraphrasing, this is a mechanical task that uses the developers reading and writing skills without requiring a lot of mental work; if minimal paraphrasing of the patch is not enough, then the developer needs to think about the patch in more abstract terms, which in turn adds more mental strain when actually applying the patch.
+
+While it may sound tedious to apply the patch for B by hand in this way, it is useful to think about the skillset that it leverages, compared to the default merge conflict resolution approach of picking which set of lines from two versions of a file to go into the final merged file.
+The point is that developers are training their reading and writing skills as part of doing programming work, whereas solving merge conflicts is only a tiny fraction of programming and thus not a skill that developers are specifically training in their day-to-day work, so why present arcane novel merge challenges, when the developer can just do some light reading and writing instead?
+
+In school, we are taught how to show our work in deriving solutions to mathematical questions, and while this can seem tedious, it can in fact be helpful to go through a number of steps in working towards the final answer, and this applies not only to high school mathematics, but to all sorts of tasks. In this view, merge conflict resolution by picking lines from two versions is showing the final answer without showing any work, whereas merging conflicts by re-applying B by hand can be thought of as deriving the final answer by showing the intermediary steps.
+
+## When re-applying the patch is just too tedious
+
+Suppose another developer has already merged the change A that conflicts with your change B. However, the conflicting change A is actually just a minor refactoring in some shared code where you have made a large refactoring effort.
+
+In this case, it would have been much less work to first merge B, and then redo A on top of B, since the A change is much less work to apply by hand.
+
+Luckily, this is possible, since we know that the patch for B can be applied to the codebase where A is not applied:
+Simply revert A, then apply the patch for B, then re-apply A by hand.
+If we use A^-1 to refer to the revert of A, then the branch now contains commits that apply three sets of changes in sequence:
+First A^-1, then B, and finally A.
+Note that only the third commit, which applies the `A` change, has to be applied by hand, as the other two commits result from the `git revert` and `git rebase` commands.
+By squashing the three commits together, we obtain a single commit which implements the `B` change, and which applies cleanly as a patch on top of the codebase with `A` already merged.
+
+We still had to reapply a patch by hand, but we chose to reapply A by hand instead of reapplying B by hand.
+
+
+## Why git?
 
 git is a complicated tool; it is difficult to learn and difficult to master.
 Nevertheless, it is very widespread in the software development world as the main version control system across open-source and proprietary ecosystems.
-A git repository tracks the evolution of a codebase (set of text files) over time, and git makes it possible to do efficient distributed collaboration on a codebase at both small and large scales.
-
-When two people try to change the same piece of code at the same time, e.g. one developer changing the app's "save" button to be green, and the other changing it to be red, this leads to a conflict when the developers attempt to synchronize their repositories with each other.
-Such a conflict requires a decision to be made as to which change should be kept in the "main" version of the codebase.
-git makes it possible to resolve such a conflict, but the default ways in which this conflict resolution is presented to the user is unintuitive.
-
 The git command-line interface has a lot of subcommands whose names can be difficult to make sense of,
 and there are several cases of one subcommand name being able to do lots of seemingly unrelated operations.
 
 There are also GUIs, either standalone or built into editors and IDEs, that seek to replace all day-to-day use of the standard command-line interface.
 
-This article will develop a mathematical theory of version control and derive some interesting git techniques for dealing with tricky situations.
+The goal of this article is to give the reader a new system of thinking about patches and codebase changes, and the formulations lead to techniques that align nicely with certain basic functionalities in git that are not as smooth or first-class in other version control systems.
 
-This article is NOT intended to be a git tutorial, and you should NOT expect to learn anything useful from it.
-
-
-## Aside: Some links to git tutorials
+This article is NOT intended to be a git tutorial, and there is no guarantee that you can take the insights from the article and apply it directly in your day-to-day life, but the hope is that the insights can help you a bit the next time you are faced with merge conflicts and codebase branch reorganizations.
+There are lots of useful git tutorials online, for example you can read up on the following:
 
 * https://git-scm.com/book/en/v2
 * https://github.com/robparrott/version-control-workshop/blob/master/docs/git.md#git-the-index
+* [Mark Dominus' git habits](https://blog.plover.com/prog/git-habits.html): separate the work of *composing* the commits from the work of *ordering* them.
 
+To apply the techniques from this article consistently, it is required to have a lot of experience with git and knowledge of git, where git usage typically falls on one of the following levels of the "git ladder":
 
-## The git ladder
 
 ### Beginner
 
@@ -53,38 +126,11 @@ This article is NOT intended to be a git tutorial, and you should NOT expect to 
 
 ### Advanced
 
-* [Mark Dominus' git habits](https://blog.plover.com/prog/git-habits.html): separate the work of *composing* the commits from the work of *ordering* them.
 * Lots of `git rebase -i`, only doing one thing at a time
 * `git prune` and `git gc`
 
 
-## Thinking about conflicting changes
-
-Two modifications to a codebase can conflict semantically, or just syntactically.
-
-A semantic conflict is when two developers are trying to take the codebase in different directions, e.g. Alice wants to change the app's "save" button to be green, and Bob wants to change it to be red.
-In this case, only one of the two changes can "survive", and the other change's commit must be dropped (on a feature branch) or reverted (if already merged).
-It is not necessarily obvious how to resolve the conflict, as it might require involving a product owner or other arbitrator to decide on which change should "win".
-When such semantic conflicts happen, it is usually a sign of some missed coordination, since two developers invested effort on something that only one developer should have been working on.
-
-A syntactic conflict is when two developers are changing the codebase in different ways but at the same place in the code, e.g. Alice wants to rename a variable, and Bob wants to extract a couple of lines of code into a new function.
-In this case, the two modifications could easily be done by one developer in any order, but the fact that the two changes happened in parallel means that there is now a conflict to resolve.
-
-There are several ways of resolving such a syntactic conflict.
-
-First, the direct approach offered by the git command-line interface is to go into the codebase, where git has helpfully mixed together two versions of the file along with some "conflict markers", and then remove the markers and the unwanted code.
-This is tedious and error-prone, and requires some mental gymnastics quite different from normal software development.
-The goal of this article is to promote approaches to conflict resolution that lets the developer avoid having to do merges by hand, whether it's through conflict markers, or an interactive three-way view, or some other approach.
-
-Another approach to resolving the syntactic conflict is to drop the commit that caused the conflict and redoing the commit by hand.
-This means some effort has to be duplicated, as the dropped commit needs to be applied again.
-
-The third approach is in some ways what this article is all about.
-Let's call the already-merged commit A, and the local conflicting commit B.
-With the third approach, you revert A, then apply B, and then redo A by hand.
-Like the previous approach, this requires duplicate effort, but the difference between the two approaches is whether it is A or B that is redone by hand.
-
-### The weight of a change
+## The weight of a change
 
 Now we have outlined two good approaches to dealing with the conflict between a merged commit A and a local conflicting commit B:
 Either drop B from the branch, rebase, and then redo B by hand; or revert A, apply B, and redo A by hand.
@@ -98,7 +144,7 @@ Changes that mostly just delete code are easy to redo; just delete the code.
 
 Changes that don't fall into those categories are more tedious to redo, in that they typically involve many lines, perhaps spanning several files, introducing new functionality. Redoing them by hand typically involves copying code out of the old diff and manually adapting the copied code in the places where it no longer applies cleanly to the codebase.
 
-### Splitting and combining changes
+## Splitting and combining changes
 
 git makes it quite easy to combine two adjacent commits A and B into a single AB commit:
 simply use the `f` (fixup) command in `git rebase -i`, or alternatively use `git reset --soft @^ && git commit --amend` if not doing an interactive rebase.
@@ -117,7 +163,7 @@ To be precise, suppose you have already committed AB, that is, a combined commit
 Simply delete the button (and all related new code) and commit that as commit B^-1, then revert the most recent commit to form commit B.
 Squash AB and B^-1 to form commit A, which is the refactoring that you can then merge.
 
-### When revert-the-revert gets messy: Introducing the Hammer
+## When revert-the-revert gets messy: Introducing the Hammer
 
 It's not easy to do a perfect revert-the-revert in one try.
 What can happen is that you try to delete all the code for the new button, commit the revert, revert the revert, and squash, but then you look at the diff of the two resulting commits A and B and see that there's still a bit of "button addition" work in commit A even though it belongs in commit B.
@@ -137,7 +183,7 @@ Note that it is pointless to write a detailed commit message for commit A, since
 
 The Hammer can be used to iteratively clean up a revert-the-revert that has gone messy, but it should be thought of as a general tool for moving changes from one commit into another.
 
-### Using the Hammer to swap two conflicting commits
+## Using the Hammer to swap two conflicting commits
 
 Sometimes while preparing a code change, it becomes evident that some refactoring is appropriate to do, usually in a way that requires modifying both the existing codebase and the newly changed code in the current branch.
 
