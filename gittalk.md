@@ -50,6 +50,18 @@ When such semantic conflicts happen, it is usually a sign of some missed coordin
 A syntactic conflict is when two developers are changing the codebase in different ways but at the same place in the code, e.g. Alice wants to rename a variable, and Bob wants to extract a couple of lines of code into a new function.
 In this case, the two modifications could easily be done by one developer in any order, but the fact that the two changes happened in parallel means that the computer cannot merge the changes together automatically, and instead the developer needs to be involved in merging the changes.
 
+**Aside:**
+Note that git can sometimes fail to find conflicts because they seem to not conflict syntactically, even though they conflict semantically.
+This can happen because git tries to resolve conflicts with the incorrect but useful assumption that things do not "conflict at a distance".
+
+Simple cases are when two commits both add the same declaration, but at different places in the code.
+This is resolved automatically by keeping both additions, even though this leads to duplicate definition errors.
+
+Another case is when two commits both move the same declaration, but to different places.
+In this case, git will symbolically split each commit into an addition and a deletion, and see that both commits perform the same deletion, and happily combine the two changes into one deletion and two additions, leading to the same duplicate definition errors as in the previous example.
+
+In all cases, semantic conflicts are typically signs of missed coordination, as discussed above, and in well-coordinated codebases, such semantic-but-not-syntactic conflicts should not happen that often. *-- End of aside.*
+
 ## Resolving conflicts peacefully
 
 Faced with two sets of changes, A and B, that conflict syntactically,
@@ -98,6 +110,12 @@ and the formulations are indirectly tailored to git in a way that leads to techn
 
 This article is NOT intended to be a git tutorial, and there is no guarantee that you can take the insights from the article and apply it directly in your day-to-day life, but the hope is that the insights can help you a bit the next time you are faced with merge conflicts and codebase branch reorganizations.
 
+In fact, in many organizations, it can be more economically efficient to implement project workflows where long-lived feature branches are forbidden and simply have developers redo their work from scratch when they face difficult merge conflicts, than have the developers train and hone their git abilities to solve esoteric git riddles.
+
+With this mindset, this article can instead be seen as theoretical research aiming to inspire the development of version control systems to provide better workflows around merge conflicts.
+
+On the other hand, for developers who already have a very good grasp of git's interface and data model, it can feel like a defeat to give up and give in to git's default merge conflict marker soup, and the ideas and tools in this article can be another expert trick to have handy in the big toolbox that you only pull out in case of the biggest and most complicated code conflicts.
+
 There are lots of useful git tutorials online. To highlight a few:
 
 * https://git-scm.com/book/en/v2
@@ -114,7 +132,7 @@ To apply the techniques from this article consistently, it is required to have a
 * `git commit -m "fixes and foxes"`
 * `git pull`
 * `git push`
-* Removing the checkout and starting from scratch with a fresh clone
+* "Let me just the whole repository and start from scratch with a fresh clone"
 
 ### Intermediate
 
@@ -131,11 +149,16 @@ To apply the techniques from this article consistently, it is required to have a
 * `git reset --soft` to squash before rebasing
 * `git commit -v` (or `git config commit.verbose true`) to read the diff while writing the commit message
 * `git rebase -i`
+* "don't rebase commits that have been made public"
 
 ### Advanced
 
 * Lots of `git rebase -i`, only doing one thing at a time
 * `git prune` and `git gc`
+* "a branch is just a pointer to a commit"
+* "a commit is just a tree, a message, author, and committer, and a list of zero or more parent commits"
+* "git is a content-addressable object database"
+* "git is a necessary evil"
 
 
 ## The weight of a change
@@ -191,6 +214,8 @@ Note that it is pointless to write a detailed commit message for commit A, since
 
 The Hammer can be used to iteratively clean up a revert-the-revert that has gone messy, but it should be thought of as a general tool for moving changes from one commit into another.
 
+Note that `f -C` is used in the Hammer as a way to do a "reverse fixup", where two commits are squashed, but only the latter of the two commits has an interesting commit message, but that's not actually the intended use-case of `f -C`, which is originally for amending a commit's commit message; see the man page of `git commit --amend` for details. This has the unfortunate consequence that `f -C` keeps the author name and date from of parent commit, which in our case is the "Revert 'HAMMER'" commit that has the "wrong" author date for what we are trying to achieve. Instead of `f -C abcd123`, one can use the command `x git cherry-pick -n abcd123 && git commit -nC abcd123`, which keeps the "correct" author name, date and commit message.
+
 ## Using the Hammer to swap two conflicting commits
 
 Sometimes while preparing a code change, it becomes evident that some refactoring is appropriate to do, usually in a way that requires modifying both the existing codebase and the newly changed code in the current branch.
@@ -207,3 +232,37 @@ Instead, use the Hammer to swap A and B without dealing with conflicts. There ar
 * B^-1: Use the Hammer to insert B^-1 B after B A, then squash B A B^-1 to obtain just A, resulting in A B.
 
 Note that this is really just a retelling of the "splitting a commit" story from earlier, since if you squash B A together, then you obtain a commit AB that you can untangle (using revert-the-revert) to obtain A B.
+
+## Example: Rebasing around automatic code formatting
+
+Consider the case where a commit A has been merged that reformats the codebase while another developer has commit B in a branch that implements a feature by modifying some of the automatically-reformatted files.
+
+The developer can run the automatic formatter on the codebase after commit B and amend the commit to obtain a commit that both adds the feature and reformats all files in the same way as commit A.
+
+When rebasing B on top of A, git will match up the many automatic code modifications, and the ones that have not been modified as part of the feature addition will be handled automatically since both A and B make the same code edits.
+
+If a bit of code has been modified to add the feature, and that bit of code happened to not need any automatic reformatting, then the changes will also not lead to any conflicts.
+
+However, in the places where code has both been reformatted and edited to add a feature, git gives up and calls on the developer to resolve the merge conflict. The developer then needs to pick the feature-added version of the code in all places.
+
+There are a few ways to handle this situation without needing to look at merge conflict markers.
+
+First, the simplest case is the one in which no other code changes have been merged, and the only commit being introduced into the feature branch is the commit A that reformats all the code, and there's only a single commit on the feature branch.
+
+In this case, after running the automatic code formatting on the feature branch, instead of rebasing on top of A, one can use a special command to redeclare the parent of commit B to be commit A.
+
+To understand why this works, it's important to understand git's data model for commit objects and tree objects: a *tree* is merely a snapshot of the contents of a codebase, and a *commit* is an object that has a *tree*, a *parent* commit, a commit message, author, date and some other metadata.
+
+Using the command `git reset --soft X && git commit -nC @@{1}` you can update the current commit's parent to be X, whilst keeping the tree and commit metadata unchanged.
+This can completely change what the commit's diff looks like with `git show`, since the diff is computed as the diff of the parent's tree with the commit's own tree, and usually it is not a good idea to use this tool.
+However, specifically in the case of rebasing around code reformatting, this is a useful tool, since it achieves the goal of rebasing without looking at merge conflict markers.
+
+For this reason, it is a good idea when doing code reformatting to include the literal commands and program versions used to apply the reformatting in the commit message, so that other developers can repeat the code reformatting if needed.
+
+Note that, instead of using the command to modify the commit parent, there is a way to use the techniques from earlier in the article to achieve the same goal. First revert the reformat, then rebase on top of the revert, and finally apply the code reformatting. This leads to a feature branch with commits A^-1 B A, where A is the reformatting and B is the feature addition. By squashing the three commits down to one commit, a new commit is obtained that implements the feature on top of the reformatted codebase.
+
+Let's move beyond the simple case described above and consider what to do if there are several other commits merged that need to be rebased around. In this case, split the rebasing into three steps: First, use the normal rebase command to rebase to the parent of A. Then, use the trick above to rebase to A from the parent of A. Finally, use the normal rebase command to rebase on top of the tip of the main branch.
+
+Finally, let's consider the case where there are several commits on the feature branch that need to be merged. In many cases, the best solution can be to squash the feature branch down to a single commit, do the complicated rebase, and then resplit the feature branch to several commits afterwards.
+
+Alternatively, you can use the hammer to insert a pair of reformat and revert-the-reformat commits in between each commit on the branch, and squash to obtain a new sequence of commits that operate on reformatted code.
